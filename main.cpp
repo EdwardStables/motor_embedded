@@ -1,4 +1,5 @@
 #include "mbed.h"
+#include "SHA256.h"
 
 //Photointerrupter input pins
 #define I1pin D3
@@ -45,13 +46,16 @@ const int8_t stateMap[] = {0x07,0x05,0x03,0x04,0x01,0x00,0x02,0x07};
 //Phase lead to make motor spin
 const int8_t lead = 2;  //2 for forwards, -2 for backwards
 
+//motor offset
+int8_t orState = 0;    //Rotot offset at motor state 0
+
 //Status LED
 DigitalOut led1(LED1);
 
 //Photointerrupter inputs
-DigitalIn I1(I1pin);
-DigitalIn I2(I2pin);
-DigitalIn I3(I3pin);
+InterruptIn I1(I1pin);
+InterruptIn I2(I2pin);
+InterruptIn I3(I3pin);
 
 //Motor Drive outputs
 DigitalOut L1L(L1Lpin);
@@ -60,6 +64,8 @@ DigitalOut L2L(L2Lpin);
 DigitalOut L2H(L2Hpin);
 DigitalOut L3L(L3Lpin);
 DigitalOut L3H(L3Hpin);
+
+
 
 //Set a given drive state
 void motorOut(int8_t driveState){
@@ -98,12 +104,39 @@ int8_t motorHome() {
     //Get the rotor state
     return readRotorState();
 }
+ 
+void positionChange(){
+    
+    int8_t intState = 0;
+    int8_t intStateOld = 0;
+    
+    intState = readRotorState();
+        if (intState != intStateOld) {
+            intStateOld = intState;
+            motorOut((intState-orState+lead+6)%6); //+6 to make sure the remainder is positive
+            //pc.printf("%d\n\r",intState);
+        }
+} 
+ 
     
 //Main
 int main() {
-    int8_t orState = 0;    //Rotot offset at motor state 0
-    int8_t intState = 0;
-    int8_t intStateOld = 0;
+   
+   SHA256 h;
+   
+   uint8_t sequence[]={0x45,0x6D,0x62,0x65,0x64,0x64,0x65,0x64,0x20,0x53,0x79,
+   0x73,0x74,0x65,0x6D,0x73,0x20,0x61,0x72,0x65,0x20,0x66,0x75,0x6E,0x20,0x61,
+   0x6E,0x64,0x20,0x64,0x6F,0x20,0x61,0x77,0x65,0x73,0x6F,0x6D,0x65,0x20,0x74,
+   0x68,0x69,0x6E,0x67,0x73,0x21,0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 
+   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+   
+   uint64_t* key =(uint64_t*)((int)sequence +48);
+   uint64_t* nonce =(uint64_t*)((int)sequence +56);
+   uint8_t hash[32];
+   
+   
+   
+    
     
     //Initialise the serial port
     Serial pc(SERIAL_TX, SERIAL_RX);
@@ -114,14 +147,19 @@ int main() {
     pc.printf("Rotor origin: %x\n\r",orState);
     //orState is subtracted from future rotor state inputs to align rotor and motor states
     
+    I1.fall(&positionChange);
+    I2.fall(&positionChange);
+    I3.fall(&positionChange);
+    
+    SHA256::computeHash(hash,(uint8_t*)sequence,64);
+    printf("hash: ");
+    for(int i = 0; i < 32; ++i)
+        printf("%02x", hash[i]);
+    printf("\n");
+    
+    
     //Poll the rotor state and set the motor outputs accordingly to spin the motor
     while (1) {
-        intState = readRotorState();
-        if (intState != intStateOld) {
-            intStateOld = intState;
-            motorOut((intState-orState+lead+6)%6); //+6 to make sure the remainder is positive
-            //pc.printf("%d\n\r",intState);
-        }
+        
     }
 }
-
