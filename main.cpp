@@ -49,6 +49,9 @@ const int8_t lead = 2;  //2 for forwards, -2 for backwards
 //motor offset
 int8_t orState = 0;    //Rotot offset at motor state 0
 
+//Hash count
+int16_t hashCount = 0;
+
 //Status LED
 DigitalOut led1(LED1);
 
@@ -65,7 +68,10 @@ DigitalOut L2H(L2Hpin);
 DigitalOut L3L(L3Lpin);
 DigitalOut L3H(L3Hpin);
 
+Ticker hash_report;
 
+//Serial Setup
+Serial pc(SERIAL_TX, SERIAL_RX);
 
 //Set a given drive state
 void motorOut(int8_t driveState){
@@ -130,36 +136,41 @@ int main() {
    0x68,0x69,0x6E,0x67,0x73,0x21,0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 
    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
    
-   uint64_t* key =(uint64_t*)((int)sequence +48);
-   uint64_t* nonce =(uint64_t*)((int)sequence +56);
-   uint8_t hash[32];
-   
-   
-   
+   uint64_t* key =(uint64_t*)((int)sequence + 48);
+   uint64_t* nonce =(uint64_t*)((int)sequence + 56);
+   uint8_t hash[32];    
     
     
-    //Initialise the serial port
-    Serial pc(SERIAL_TX, SERIAL_RX);
-    pc.printf("Hello\n\r");
+    
+    printf("\n\rHello");
     
     //Run the motor synchronisation
     orState = motorHome();
-    pc.printf("Rotor origin: %x\n\r",orState);
+    pc.printf("\n\rRotor origin: %x",orState);
     //orState is subtracted from future rotor state inputs to align rotor and motor states
     
     I1.fall(&positionChange);
     I2.fall(&positionChange);
     I3.fall(&positionChange);
     
-    SHA256::computeHash(hash,(uint8_t*)sequence,64);
-    printf("hash: ");
-    for(int i = 0; i < 32; ++i)
-        printf("%02x", hash[i]);
-    printf("\n");
-    
-    
-    //Poll the rotor state and set the motor outputs accordingly to spin the motor
+    Timer t;
+
+    t.start();
     while (1) {
-        
+        h.computeHash(hash, sequence, 64);
+        hashCount++;
+        if( hash[0] == 0 && hash[1] == 0){
+            pc.printf("\n\rNonce: ");
+            for(int i = 63; i >= 56; i--){
+                pc.printf("%02x", sequence[i]);
+            }
+        }
+        ++*nonce;        
+        if(t.read_ms() >= 1000){
+            pc.printf("\n\rHash rate: ");
+            pc.printf("%i", hashCount);
+            hashCount = 0;   
+            t.reset();
+        }
     }
 }
